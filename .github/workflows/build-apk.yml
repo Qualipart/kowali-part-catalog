@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'android-app/**'
+      - 'kowali-part-android-source.zip'
       - '.github/workflows/build-apk.yml'
 
 permissions:
@@ -16,8 +16,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Get source code
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Extract Android project
+        run: |
+          unzip -o kowali-part-android-source.zip -d .
+          test -f android-app/app/build.gradle
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -25,19 +30,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Build APK
         run: |
-          if [ ! -f android-app/gradlew ]; then
-            echo "Gradle wrapper not found in android-app"
-            exit 1
-          fi
-          chmod +x android-app/gradlew
-          cd android-app
-          ./gradlew assembleDebug
+          gradle -p android-app assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: kowali-part-apk
-          path: android-app/**/build/outputs/apk/**/*.apk
+          path: android-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
