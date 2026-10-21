@@ -388,19 +388,28 @@ render(true);
   // دکمه فقط وقتی نمایش داده می‌شود که کروم اجازه نصب مستقیم داده باشد
   window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();deferred=e;});
   window.addEventListener('appinstalled',function(){deferred=null;btn.classList.add('hide')});
+  function hintFor(ua){
+    var l=ua.toLowerCase();
+    var isIOS=/iphone|ipad|ipod/.test(l)||(/macintosh/.test(l)&&navigator.maxTouchPoints>1);
+    var inApp=/telegram|instagram|fban|fbav|whatsapp|line\/|; wv\)|bale|eitaa|rubika|soroush/.test(l);
+    if(inApp)return 'این صفحه داخل یک برنامه باز شده و نصب در آن ممکن نیست. از منوی بالا گزینه «باز کردن در مرورگر» (Open in browser) را بزنید و آدرس را در کروم یا سافاری باز کنید.';
+    if(isIOS)return 'روی آیفون: دکمه اشتراک‌گذاری (مربع با فلش رو به بالا) را بزنید و «Add to Home Screen» را انتخاب کنید. اگر آن را نمی‌بینید، آدرس را در سافاری باز کنید.';
+    if(/firefox|fxios/.test(l)&&/android/.test(l))return 'در فایرفاکس: منوی سه‌نقطه را بزنید و «Install» یا «Add to Home screen» را انتخاب کنید.';
+    if(/samsungbrowser/.test(l))return 'در مرورگر سامسونگ: منوی پایین صفحه (سه‌خط) را بزنید و «Add page to» و سپس «Home screen» را انتخاب کنید.';
+    if(/android/.test(l))return 'منوی سه‌نقطه کروم (بالای صفحه) را بزنید و «Add to Home screen» را انتخاب کنید. اگر «Install app» فعال بود، آن را بزنید.';
+    if(/firefox/.test(l))return 'فایرفاکس کامپیوتر نصب برنامه را پشتیبانی نمی‌کند. می‌توانید صفحه را بوکمارک کنید یا در کروم یا اج باز کنید.';
+    if(/safari/.test(l)&&!/chrome|chromium|edg/.test(l))return 'در سافاری مک: از منوی File گزینه «Add to Dock» را بزنید.';
+    return 'در کروم یا اج: روی آیکون نصب در نوار آدرس یا منوی سه‌نقطه، گزینه «Install» را بزنید.';
+  }
   var toast=document.getElementById('installToast'),timer;
-  function say(t){toast.textContent=t;toast.classList.add('show');clearTimeout(timer);timer=setTimeout(function(){toast.classList.remove('show')},7000)}
+  function say(t){toast.textContent=t;toast.classList.add('show');clearTimeout(timer);timer=setTimeout(function(){toast.classList.remove('show')},10000)}
   btn.addEventListener('click',async function(){
     if(deferred){
       deferred.prompt();
       try{await deferred.userChoice}catch(e){}
       deferred=null;return;
     }
-    if(/iphone|ipad|ipod/i.test(navigator.userAgent)){
-      say('در سافاری روی دکمه اشتراک‌گذاری بزنید و «Add to Home Screen» را انتخاب کنید.');
-    }else{
-      say('از منوی سه‌نقطه کروم (بالای صفحه) گزینه «Install app» یا «Add to Home screen» را بزنید.');
-    }
+    say(hintFor(navigator.userAgent||''));
   });
 })();
 </script>
