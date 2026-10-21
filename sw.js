@@ -1,5 +1,5 @@
 // با هر بروزرسانی بزرگ، عدد نسخه را عوض کنید (v1 → v2 ...) تا کش قدیمی پاک شود
-const CACHE = 'qualipart-v1';
+const CACHE = 'qualipart-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', e => {
