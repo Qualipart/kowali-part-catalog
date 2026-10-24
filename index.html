@@ -423,6 +423,7 @@ body.has-cart{padding-bottom:84px}
    <textarea id="cartNote" rows="2" placeholder="توضیحات (اختیاری)"></textarea>
   </div>
   <div class="cart-send">
+   <button type="button" id="sendDirect" class="cs-main" hidden>ارسال سفارش</button>
    <button type="button" id="sendEitaa" class="cs-main">ارسال در ایتا</button>
    <button type="button" id="sendSms">پیامک</button>
    <button type="button" id="sendShare" hidden>اشتراک‌گذاری (بله، تلگرام و ...)</button>
@@ -545,6 +546,8 @@ function render(resetLimit = true) {
 }
 // ===== سبد سفارش =====
 const SALES_PHONE = "09133320962", SALES_WA = "989133320962";
+// آدرس واسطه ارسال مستقیم سفارش به ایتا (Cloudflare Worker). خالی = ارسال مستقیم غیرفعال
+const ORDER_API = "https://qualipart-order.a-salehian7979.workers.dev/";
 const byCode = new Map(products.map(p => [String(p.code), p]));
 const cart = new Map();
 try {
@@ -664,13 +667,37 @@ document.getElementById("sendCopy").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(t); finishOrder("متن سفارش کپی شد؛ آن را برای فروش ارسال کنید."); }
   catch (e) { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); finishOrder("متن سفارش کپی شد؛ آن را برای فروش ارسال کنید."); } catch (_) { say("کپی انجام نشد"); } ta.remove(); }
 });
+const directBtn = document.getElementById("sendDirect"), eitaaBtn = document.getElementById("sendEitaa");
+if (ORDER_API) {
+  directBtn.hidden = false;
+  eitaaBtn.classList.remove("cs-main"); eitaaBtn.textContent = "ارسال دستی در ایتا";
+}
+directBtn.addEventListener("click", async () => {
+  if (!ready() || directBtn.disabled) return;
+  const old = directBtn.textContent; directBtn.disabled = true; directBtn.textContent = "در حال ارسال…";
+  const body = {
+    name: nameEl.value.trim(), phone: normPhone(phoneEl.value), note: document.getElementById("cartNote").value.trim(),
+    items: [...cart].map(([code, n]) => { const p = byCode.get(code); return { code, name: p.name, unit: p.unit || "عدد", qty: n }; })
+  };
+  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 12000);
+  try {
+    const r = await fetch(ORDER_API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctl.signal });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error("fail");
+    finishOrder("سفارش شما برای واحد فروش ارسال شد. همکاران ما با شما تماس می‌گیرند.");
+  } catch (e) {
+    showErr("ارسال مستقیم انجام نشد. لطفاً از یکی از دکمه‌های زیر (ایتا، پیامک و ...) استفاده کنید.", null);
+  } finally { clearTimeout(tm); directBtn.disabled = false; directBtn.textContent = old; }
+});
 document.getElementById("sendEitaa").addEventListener("click", async () => {
   if (!ready()) return;
   const t = orderText();
   try { await navigator.clipboard.writeText(t); }
   catch (e) { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (_) {} ta.remove(); }
-  finishOrder("متن سفارش کپی شد؛ در چت ایتا پیست و ارسال کنید.", "https://eitaa.com/QUALIIPART", "باز کردن چت ایتا");
-  setTimeout(() => window.open("https://eitaa.com/QUALIIPART", "_blank", "noopener"), 700);
+  // تلاش برای پر شدن خودکار متن در چت؛ اگر ایتا پشتیبانی نکند، متن کپی‌شده را پیست می‌کنند
+  const q = encodeURIComponent(t), url = "https://eitaa.com/QUALIIPART" + (q.length < 1800 ? "?text=" + q : "");
+  finishOrder("سفارش آماده است. اگر متن در چت ایتا خودکار نیامد، پیست و ارسال کنید.", url, "باز کردن چت ایتا");
+  setTimeout(() => window.open(url, "_blank", "noopener"), 700);
 });
 document.getElementById("updated").textContent = "قیمت‌ها: " + PRICES_UPDATED;
 updateCartBar();
