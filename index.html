@@ -683,10 +683,10 @@ directBtn.addEventListener("click", async () => {
   try {
     const r = await fetch(ORDER_API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctl.signal });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok || !j.ok) throw new Error("fail");
+    if (!r.ok || !j.ok) { const er = new Error("fail"); er.info = "کد " + (j.error || r.status) + (j.status ? " / " + j.status : "") + (j.detail ? " / " + String(j.detail).slice(0, 120) : ""); throw er; }
     finishOrder("سفارش شما برای واحد فروش ارسال شد. همکاران ما با شما تماس می‌گیرند.");
   } catch (e) {
-    showErr("ارسال مستقیم انجام نشد. لطفاً از یکی از دکمه‌های زیر (ایتا، پیامک و ...) استفاده کنید.", null);
+    showErr("ارسال مستقیم انجام نشد. لطفاً از یکی از دکمه‌های زیر (ایتا، پیامک و ...) استفاده کنید. (" + (e.info || "خطای اتصال") + ")", null);
   } finally { clearTimeout(tm); directBtn.disabled = false; directBtn.textContent = old; }
 });
 document.getElementById("sendEitaa").addEventListener("click", async () => {
