@@ -512,7 +512,7 @@ function normalizeText(value) {
     .replace(/[‐‑‒–—−]/g, " ")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     // یکسان‌سازی املای رایج قطعات برای جست‌وجوی منعطف‌تر
-    .replace(/کوئل/g, "کویل").replace(/شیلنگ/g, "شلنگ")
+    .replace(/کوئل/g, "کویل").replace(/شیلنگ/g, "شلنگ").replace(/جنت/g, "شلنگ")
     .trim().replace(/\s+/g, " ");
 }
 function escapeHtml(value) {
