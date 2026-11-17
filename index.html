@@ -555,7 +555,7 @@ function normalizeText(value) {
     .replace(/[۰-۹]/g, d => String(faDigits.indexOf(d)))
     .replace(/[٠-٩]/g, d => String(arDigits.indexOf(d)))
     .replace(/[يى]/g, "ی").replace(/ك/g, "ک").replace(/ة/g, "ه")
-    .replace(/ؤ/g, "و").replace(/إ|أ|ٱ/g, "ا")
+    .replace(/ؤ/g, "و").replace(/آ|إ|أ|ٱ/g, "ا")
     .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
     .replace(/[\u200c\u200f\u200e]/g, " ")
     .replace(/[‐‑‒–—−]/g, " ")
