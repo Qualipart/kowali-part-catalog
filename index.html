@@ -701,41 +701,77 @@ function render(resetLimit = true) {
   if (!terms.length) {
     filtered = indexedProducts;
   } else {
+    // جست‌وجوی هوشمند: هر بخش از عبارت می‌تواند ابتدای یک واژه باشد؛
+    // غلط تایپی کوچک و نوشتن ناقص چند واژه نیز امتیاز می‌گیرد.
+    function wordDistanceAtMostOne(a, b) {
+      if (Math.abs(a.length - b.length) > 1) return false;
+      let i = 0, j = 0, edits = 0;
+      while (i < a.length && j < b.length) {
+        if (a[i] === b[j]) { i++; j++; continue; }
+        if (++edits > 1) return false;
+        if (a.length > b.length) i++;
+        else if (b.length > a.length) j++;
+        else { i++; j++; }
+      }
+      return edits + ((i < a.length || j < b.length) ? 1 : 0) <= 1;
+    }
+    function queryTokenMatch(token, word, allowOneLetter) {
+      if (word === token) return 100;
+      if (word.startsWith(token)) return 82 + Math.min(token.length, 8);
+      if (token.length >= 3 && word.includes(token)) return 65 + Math.min(token.length, 8);
+      // اصلاح چند شکل رایج تایپی در ابتدای کلمه، مانند «شیل» به‌جای «شلنگ»
+      const shortAliases = {"شیل":"شل", "شیلن":"شل", "بلبرن":"بلبرینگ", "گیریب":"گیربکس"};
+      const alias = shortAliases[token];
+      if (alias && word.startsWith(alias)) return 78;
+      // حرف تنها فقط در عبارت‌های چندبخشی پذیرفته می‌شود تا نتیجه‌های بی‌ربط زیاد نشوند.
+      if (allowOneLetter && token.length === 1 && word.startsWith(token)) return 24;
+      if (token.length >= 4 && word.length >= 4 && wordDistanceAtMostOne(token, word)) return 48;
+      if (token.length === 3 && word.length >= 4 && wordDistanceAtMostOne(token, word.slice(0, 3))) return 42;
+      return 0;
+    }
     filtered = [];
-    // «جلو/عقب» ویژگی تکمیلی قطعه است؛ اگر در نام کالا ذکر نشده باشد
-    // نباید باعث حذف کالایی شود که نوع قطعه و خودرویش با جست‌وجو یکی است.
     const positionTerms = ["جلو", "عقب"];
     const wantedPositions = terms.filter(t => positionTerms.includes(t));
     const coreTerms = terms.filter(t => !positionTerms.includes(t));
     for (const item of indexedProducts) {
-      const strictMatch = terms.every(term => item.haystack.includes(term));
-      const coreMatch = coreTerms.length >= 2 && coreTerms.every(term => item.haystack.includes(term));
+      const words = [...new Set(item.haystack.split(" ").filter(Boolean))];
+      let score = 0, matched = 0, matchedCore = 0, missingPosition = false;
+      for (const term of terms) {
+        let best = 0;
+        for (const word of words) {
+          const value = queryTokenMatch(term, word, terms.length >= 3);
+          if (value > best) best = value;
+          if (best >= 100) break;
+        }
+        if (!best) {
+          // اگر «جلو/عقب» در نام کالا درج نشده، نوع قطعه و خودرو کافی است.
+          if (positionTerms.includes(term)) { missingPosition = true; continue; }
+          break;
+        }
+        matched++;
+        if (!positionTerms.includes(term)) matchedCore++;
+        score += best;
+      }
+      if (matchedCore !== coreTerms.length) continue;
+      if (matched !== terms.length && !(missingPosition && wantedPositions.length)) continue;
       const hasOppositePosition = wantedPositions.some(pos =>
         item.name.includes(pos === "جلو" ? "عقب" : "جلو")
       );
-      // نتیجه‌های دارای جهت مخالف (مثلاً دیسک عقب در جست‌وجوی دیسک جلو) حذف می‌شوند؛
-      // اما کالایی که جهت در نامش نیامده، با نوع قطعه و خودرو نمایش داده می‌شود.
-      if (!strictMatch && !(wantedPositions.length && coreMatch && !hasOppositePosition)) continue;
-      let score = 0;
-      if (strictMatch) score += 700;
-      if (item.code === query) score += 2000;
-      if (item.code.startsWith(query)) score += 1000;
-      if (item.name === query) score += 800;
-      if (item.name.startsWith(query)) score += 500;
+      if (wantedPositions.length && hasOppositePosition) continue;
+      if (missingPosition) score -= 35;
+      // رتبه‌بندی: تطبیق دقیق و کد خودرو/قطعه در اولویت قرار می‌گیرند.
+      if (item.haystack.includes(query)) score += 180;
+      if (item.name === query) score += 500;
+      if (item.code === query) score += 1200;
       if (item.code.includes(query)) score += 300;
-      if (item.name.includes(query)) score += 200;
-      for (const term of terms) {
-        if (item.code === term) score += 120;
-        if (item.name.startsWith(term)) score += 50;
-        else if (item.name.includes(term)) score += 20;
-      }
-      // تطبیق هسته جست‌وجو را حفظ می‌کنیم، حتی اگر «جلو/عقب» در نام کالا ثبت نشده باشد.
-      if (!strictMatch) score += 100;
+      if (item.name.startsWith(query)) score += 220;
+      if (coreTerms.length && coreTerms.every(t => item.name.includes(t))) score += 60;
       filtered.push({item, score});
     }
     filtered.sort((a,b) => b.score - a.score || a.item.index - b.item.index);
     filtered = filtered.map(x => x.item);
   }
+
   const shown = filtered.slice(0, visibleLimit);
   rows.innerHTML = shown.map(({p}) => {
     const prices = productPrices[String(p.code)];
