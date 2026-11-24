@@ -643,6 +643,7 @@ function normalizeText(value) {
     .replace(/[‐‑‒–—−]/g, " ")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     // یکسان‌سازی املای رایج و نام‌های هم‌معنی قطعات برای جست‌وجوی منعطف‌تر
+    .replace(/باطری/g, "باتری")
     .replace(/کوئل/g, "کویل").replace(/شیلنگ/g, "شلنگ").replace(/جنت/g, "شلنگ")
     .replace(/بلبرنگ/g, "بلبرینگ").replace(/مشگی/g, "مشکی")
     .replace(/گیریبکس/g, "گیربکس").replace(/گیریس/g, "گریس")
