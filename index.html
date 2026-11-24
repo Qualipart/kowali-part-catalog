@@ -649,6 +649,8 @@ function normalizeText(value) {
     .replace(/منبع انبساط/g, "قمقمه").replace(/مخزن انبساط/g, "قمقمه")
     .replace(/مهره/g, "فشنگی").replace(/صافی/g, "فیلتر")
     .replace(/کلاج/g, "کلاچ").replace(/دیسک و صفحه/g, "کیت کلاچ")
+    // یکسان‌سازی نام‌های رایج یک قطعه: کلگی پلوس، سرپلوس و کله پلوس
+    .replace(/(?:کلگی|کله|سر)\s*پلوس/g, "سرپلوس")
     .trim().replace(/\s+/g, " ");
 
   // گسترش دوطرفه نام‌های هم‌معنی قطعات؛ روی عبارت جست‌وجو و نام کالا یکسان اعمال می‌شود.
@@ -1094,7 +1096,9 @@ async function downloadParsianFile() {
     const res = await fetch(PARSIAN_TEMPLATE, { cache: "force-cache" });
     if (!res.ok) throw new Error("template " + res.status);
     const bytes = buildParsianMop(await res.arrayBuffer(), items);
-    const fname = latinName(nameEl.value) + ".Mop";
+    const d = new Date(), z = n => String(n).padStart(2, "0");
+    const stamp = d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + "_" + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds());
+    const fname = latinName(nameEl.value) + "_" + stamp + ".Mop"; // هر بار با تاریخ و ساعت متفاوت
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
     a.download = fname; a.style.display = "none";
