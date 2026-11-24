@@ -909,12 +909,13 @@ const doneModal = document.getElementById("doneModal"), doneClose = document.get
 const ICON_OK = '<div class="done-ok"><svg viewBox="0 0 64 64" aria-hidden="true"><circle class="ring" cx="32" cy="32" r="28"/><path class="tick" d="M19 33l9 9 17-19"/></svg></div>';
 const ICON_GO = '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" fill="#fbf3df" stroke="#c9a45e" stroke-width="3"/><path d="M20 32h24M34 22l10 10-10 10" fill="none" stroke="#a9812f" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const faN = v => String(v).replace(/\d/g, d => "۰۱۲۳۴۵۶۷۸۹"[d]);
-function hideDone() { doneModal.hidden = true; document.body.style.overflow = ""; }
-doneClose.addEventListener("click", hideDone);
+function hideDone() { doneGoUrl = null; doneModal.hidden = true; document.body.style.overflow = ""; }
+let doneGoUrl = null; // اگر پر باشد، با زدن «متوجه شدم» به این آدرس (ایتا) می‌رود
+doneClose.addEventListener("click", () => { const u = doneGoUrl; doneGoUrl = null; hideDone(); if (u) window.open(u, "_blank", "noopener"); });
 doneModal.addEventListener("click", e => { if (e.target === doneModal) hideDone(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !doneModal.hidden) hideDone(); });
 function finishOrder(msg, href, linkText, opts) {
-  opts = opts || {};
+  opts = opts || {}; doneGoUrl = null;
   let qty = 0; cart.forEach(n => { qty += n; });
   const sum = cart.size ? faN(cart.size) + " کالا (" + faN(qty) + " عدد)\n" + nameEl.value.trim() + "\n" + faN(normPhone(phoneEl.value)) : "";
   const codes = [...cart.keys()];
@@ -1101,11 +1102,15 @@ document.getElementById("sendEitaa").addEventListener("click", async () => {
   // تلاش برای پر شدن خودکار متن در چت؛ اگر ایتا پشتیبانی نکند، متن کپی‌شده را پیست می‌کنند
   const q = encodeURIComponent(t), url = "https://eitaa.com/QUALIIPART" + (q.length < 1800 ? "?text=" + q : "");
   const fileOk = await downloadParsianFile();
-  finishOrder(fileOk
-    ? "فایل «" + fileOk + "» روی گوشی شما دانلود شد. حتماً این فایل دانلودشده را در چت ایتا برای ما ارسال کنید؛ سفارش شما با ارسال این فایل ثبت می‌شود. اگر متن سفارش در چت ایتا خودکار نیامد، آن را پیست و ارسال کنید."
-    : "ساخت فایل پارسیان انجام نشد. متن سفارش کپی شد؛ آن را در چت ایتا پیست و ارسال کنید.",
-    url, "باز کردن چت ایتا", { title: fileOk ? "حتماً فایل دانلودشده را برای ما بفرستید" : "سفارش آماده ارسال است" });
-  setTimeout(() => window.open(url, "_blank", "noopener"), 700);
+  if (fileOk) {
+    // فقط فایل دانلود می‌شود؛ بعد از خواندن پیام و زدن «متوجه شدم» وارد ایتا می‌شود
+    finishOrder("فایل «" + fileOk + "» روی گوشی شما دانلود شد. حتماً این فایل دانلودشده را در چت ایتا برای ما ارسال کنید؛ سفارش شما با ارسال این فایل ثبت می‌شود. بعد از خواندن این پیام، دکمه «متوجه شدم» را بزنید تا وارد ایتا شوید. اگر متن سفارش در چت ایتا خودکار نیامد، آن را پیست و ارسال کنید.",
+      null, null, { title: "حتماً فایل دانلودشده را برای ما بفرستید" });
+    doneGoUrl = url;
+  } else {
+    finishOrder("ساخت فایل پارسیان انجام نشد. متن سفارش کپی شد؛ آن را در چت ایتا پیست و ارسال کنید.", url, "باز کردن چت ایتا", { title: "سفارش آماده ارسال است" });
+    setTimeout(() => window.open(url, "_blank", "noopener"), 700);
+  }
 });
 updateCartBar();
 
