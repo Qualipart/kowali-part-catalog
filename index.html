@@ -976,6 +976,123 @@ directBtn.addEventListener("click", async () => {
     showErr("ارسال سفارش انجام نشد و ارتباط با سرور برقرار نشد. در صورت امکان با اینترنت همراه اول دوباره امتحان کنید یا VPN خود را روشن کنید. همچنین می‌توانید از دکمه‌های ارسال دستی در ایتا یا پیامک استفاده کنید. (" + (e.info || "خطای اتصال") + ")", null);
   } finally { clearTimeout(tm); directBtn.disabled = false; directBtn.textContent = old; }
 });
+// ---- تولید فایل پارسیان (.Mop) از روی قالب نمونه ----
+const PARSIAN_TEMPLATE = "parsian-template.mop"; // نمونه فاکتور پارسیان کنار index.html
+const MOP = { PS: 4096, TDEF: 316, USAGE: 317, IDX: 318, DATA: 375 };
+function mopRow(it, id) {
+  const NC = 42, FIX = 150, M = 6;
+  const nameB = (s) => { const b = new Uint8Array(s.length * 2); const v = new DataView(b.buffer); for (let i = 0; i < s.length; i++) v.setUint16(i * 2, s.charCodeAt(i), true); return b; };
+  const fx = new DataView(new ArrayBuffer(FIX));
+  fx.setInt32(0, id, true); fx.setInt32(4, id, true);
+  fx.setInt16(70, 1, true);                        // StrhCode
+  fx.setFloat64(72, Number(it.code) || 0, true);   // GoodsCode
+  fx.setUint32(80 + 13, Math.round(it.qty * 1000), true); // Tedad (numeric, scale 3)
+  fx.setFloat64(114, it.price || 0, true);         // Price (۱ برای کالاهای دارای قیمت)
+  fx.setFloat64(138, 0, true);                     // GoodsDiscont
+  const mask = new Uint8Array(M);
+  [0, 1, 18, 19, 20, 21, 22, 24, 28, 40].forEach((b) => { mask[b >> 3] |= 1 << (b & 7); });
+  const name = nameB(String(it.name || "").slice(0, 250)), unit = nameB(String(it.unit || "").slice(0, 20));
+  const head = 2 + FIX;
+  const offs = [head, head, head, head + name.length, head + name.length + unit.length]; // var0..var4
+  for (let i = 5; i < 16; i++) offs.push(head + name.length + unit.length);
+  const eod = head + name.length + unit.length;
+  const total = head + name.length + unit.length + 2 + 16 * 2 + 2 + M;
+  const out = new Uint8Array(total), dv = new DataView(out.buffer);
+  dv.setUint16(0, NC, true); out.set(new Uint8Array(fx.buffer), 2);
+  out.set(name, head); out.set(unit, head + name.length);
+  let p = eod; dv.setUint16(p, eod, true); p += 2;
+  for (let i = 15; i >= 0; i--) { dv.setUint16(p, offs[i], true); p += 2; }
+  dv.setUint16(p, 16, true); p += 2; out.set(mask, p);
+  return out;
+}
+function buildParsianMop(template, items) {
+  const PS = MOP.PS, T = new Uint8Array(template);
+  const rows = items.map((it, i) => mopRow(it, i + 1));
+  // تقسیم ردیف‌ها بین صفحه‌های داده
+  const pages = []; let cur = [], used = 14;
+  rows.forEach((r, i) => {
+    if (used + r.length + 2 > PS && cur.length) { pages.push(cur); cur = []; used = 14; }
+    cur.push(i); used += r.length + 2;
+  });
+  pages.push(cur);
+  const nPages = Math.floor(T.length / PS);
+  if (nPages + pages.length - 1 > 511) throw new Error("too many items");
+  const out = new Uint8Array(T.length + (pages.length - 1) * PS); out.set(T);
+  const pageNos = pages.map((_, k) => (k === 0 ? MOP.DATA : nPages + k - 1));
+  const loc = []; // [page,row] برای هر آیتم
+  const free = [];
+  pages.forEach((idxs, k) => {
+    const base = pageNos[k] * PS; out.fill(0, base, base + PS);
+    const dv = new DataView(out.buffer, base, PS);
+    out[base] = 1; out[base + 1] = 1; dv.setUint32(4, MOP.TDEF, true); dv.setUint16(12, idxs.length, true);
+    let end = PS;
+    idxs.forEach((ri, r) => {
+      const row = rows[ri], st = end - row.length; out.set(row, base + st);
+      dv.setUint16(14 + 2 * r, st, true); end = st; loc[ri] = [pageNos[k], r];
+    });
+    const f = end - (14 + 2 * idxs.length); dv.setUint16(2, f, true); free.push(f);
+  });
+  // ایندکس (کلید ID)
+  const ib = MOP.IDX * PS, idv = new DataView(out.buffer, ib, PS);
+  out.fill(0, ib + 27, ib + 480 + 4096 - 480);
+  rows.forEach((_, i) => {
+    const o = ib + 480 + 9 * i; out[o] = 0x7f; new DataView(out.buffer).setUint32(o + 1, (i + 1) ^ 0x80000000, false);
+    out[o + 5] = loc[i][0] >> 16; out[o + 6] = (loc[i][0] >> 8) & 255; out[o + 7] = loc[i][0] & 255; out[o + 8] = loc[i][1];
+    const e = 9 * (i + 1); out[ib + 27 + (e >> 3)] |= 1 << (e & 7);
+  });
+  idv.setUint16(2, PS - 480 - 9 * rows.length, true);
+  // تعریف جدول: تعداد ردیف و شمارنده
+  const tb = MOP.TDEF * PS, tdv = new DataView(out.buffer);
+  tdv.setUint32(tb + 16, rows.length, true); tdv.setUint32(tb + 20, rows.length, true);
+  // نقشه‌ی صفحه‌ها
+  const ub = MOP.USAGE * PS, udv = new DataView(out.buffer);
+  const rowStart = (r) => ub + (udv.getUint16(ub + 14 + 2 * r, true) & 0x1fff);
+  const setBit = (r, pg, on) => { const o = rowStart(r) + 5 + (pg >> 3); if (on) out[o] |= 1 << (pg & 7); else out[o] &= ~(1 << (pg & 7)); };
+  pageNos.forEach((pg, k) => { setBit(0, pg, true); setBit(1, pg, free[k] >= 270); });
+  return out;
+}
+
+// تبدیل نام فارسی مشتری به حروف انگلیسی برای نام فایل
+const NAME_DICT = { "محمد":"Mohammad","محمدی":"Mohammadi","علی":"Ali","علیرضا":"Alireza","رضا":"Reza","رضایی":"Rezaei","حسین":"Hossein","حسینی":"Hosseini","حسن":"Hassan","احمد":"Ahmad","احمدی":"Ahmadi","مهدی":"Mahdi","امیر":"Amir","حمید":"Hamid","مجید":"Majid","سعید":"Saeed","محسن":"Mohsen","مصطفی":"Mostafa","ابراهیم":"Ebrahim","اکبر":"Akbar","اصغر":"Asghar","کریم":"Karim","کریمی":"Karimi","جعفری":"Jafari","صادقی":"Sadeghi","موسوی":"Mousavi","رحیمی":"Rahimi","رحمانی":"Rahmani","اکبری":"Akbari","نوری":"Nouri","یوسف":"Yousef","یعقوب":"Yaghoub","مسعود":"Masoud","بهرام":"Bahram","فرهاد":"Farhad","کامران":"Kamran","داود":"Davoud","وحید":"Vahid","ناصر":"Naser","هادی":"Hadi","جواد":"Javad","عباس":"Abbas","عباسی":"Abbasi","قاسمی":"Ghasemi","غلامی":"Gholami","غلامرضا":"Gholamreza","شریفی":"Sharifi","میرزایی":"Mirzaei","زارعی":"Zarei","باقری":"Bagheri","کاظمی":"Kazemi","ابوالفضل":"Abolfazl","سید":"Seyed","شهرام":"Shahram","تهرانی":"Tehrani","زاده":"Zadeh","سیدمحمد":"Seyedmohammad","فاطمه":"Fatemeh","زهرا":"Zahra","مریم":"Maryam" };
+const FA_LAT = { "ا":"a","آ":"a","ب":"b","پ":"p","ت":"t","ث":"s","ج":"j","چ":"ch","ح":"h","خ":"kh","د":"d","ذ":"z","ر":"r","ز":"z","ژ":"zh","س":"s","ش":"sh","ص":"s","ض":"z","ط":"t","ظ":"z","ع":"a","غ":"gh","ف":"f","ق":"gh","ک":"k","گ":"g","ل":"l","م":"m","ن":"n","و":"v","ه":"h","ی":"y","ئ":"y","ؤ":"o","ة":"h" };
+function latinName(raw) {
+  const norm = String(raw || "").replace(/ي/g, "ی").replace(/ك/g, "ک").replace(/[\u200c\u200f\u200e]/g, "")
+    .replace(/[۰-۹]/g, d => "۰۱۲۳۴۵۶۷۸۹".indexOf(d)).replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
+  const words = norm.split(/\s+/).filter(Boolean).map(w => {
+    if (NAME_DICT[w]) return NAME_DICT[w];
+    let out = "", prevCons = false;
+    [...w].forEach((ch, i) => {
+      if (/[A-Za-z0-9]/.test(ch)) { out += ch; prevCons = !/[aeiouAEIOU]/.test(ch); return; }
+      let l = FA_LAT[ch]; if (l === undefined) return;
+      if (ch === "و" && i > 0) l = "o";
+      if (ch === "ی" && i > 0) l = "i";
+      if (ch === "ه" && i === w.length - 1 && prevCons) { out += "eh"; prevCons = false; return; }
+      const isV = /^[aeiou]$/.test(l);
+      if (!isV && prevCons && i > 0 && l !== "h") out += "e";
+      out += l; prevCons = !isV;
+    });
+    return out.charAt(0).toUpperCase() + out.slice(1);
+  }).filter(Boolean);
+  return words.join("_").replace(/[^A-Za-z0-9_]/g, "").slice(0, 60) || "Customer";
+}
+// ساخت خودکار فایل پارسیان از سبد مشتری و دانلود روی گوشی او
+async function downloadParsianFile() {
+  try {
+    const items = [];
+    cart.forEach((qty, code) => { const p = byCode.get(code); if (!p) return; const pr = productPrices[String(p.code)]; const hasPrice = !!pr && Object.values(pr).some(v => Number(v) > 0); items.push({ code: p.code, name: p.name, unit: p.unit || "", qty, price: hasPrice ? 1 : 0 }); });
+    if (!items.length) return false;
+    const res = await fetch(PARSIAN_TEMPLATE, { cache: "force-cache" });
+    if (!res.ok) throw new Error("template " + res.status);
+    const bytes = buildParsianMop(await res.arrayBuffer(), items);
+    const fname = latinName(nameEl.value) + ".Mop";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+    a.download = fname; a.style.display = "none";
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+    return fname;
+  } catch (e) { console.error(e); return false; }
+}
 document.getElementById("sendEitaa").addEventListener("click", async () => {
   if (!ready()) return;
   const t = orderText();
@@ -983,7 +1100,11 @@ document.getElementById("sendEitaa").addEventListener("click", async () => {
   catch (e) { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (_) {} ta.remove(); }
   // تلاش برای پر شدن خودکار متن در چت؛ اگر ایتا پشتیبانی نکند، متن کپی‌شده را پیست می‌کنند
   const q = encodeURIComponent(t), url = "https://eitaa.com/QUALIIPART" + (q.length < 1800 ? "?text=" + q : "");
-  finishOrder("اگر متن در چت ایتا خودکار نیامد، آن را پیست و ارسال کنید.", url, "باز کردن چت ایتا", { title: "سفارش آماده ارسال است" });
+  const fileOk = await downloadParsianFile();
+  finishOrder(fileOk
+    ? "فایل «" + fileOk + "» روی گوشی شما دانلود شد. حتماً این فایل دانلودشده را در چت ایتا برای ما ارسال کنید؛ سفارش شما با ارسال این فایل ثبت می‌شود. اگر متن سفارش در چت ایتا خودکار نیامد، آن را پیست و ارسال کنید."
+    : "ساخت فایل پارسیان انجام نشد. متن سفارش کپی شد؛ آن را در چت ایتا پیست و ارسال کنید.",
+    url, "باز کردن چت ایتا", { title: fileOk ? "حتماً فایل دانلودشده را برای ما بفرستید" : "سفارش آماده ارسال است" });
   setTimeout(() => window.open(url, "_blank", "noopener"), 700);
 });
 updateCartBar();
